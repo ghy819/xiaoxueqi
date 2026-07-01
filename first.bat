@@ -1,5 +1,4 @@
 @echo off
-chcp 65001
 
 echo [INIT+TAG] ===== 初始化并创建 v1.0 =====
 
