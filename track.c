@@ -68,9 +68,8 @@ uint8_t TRACK_Read(void)
  *  >0  = 偏左 (右边传感器压线, 需右转修正)
  * ================================================================ */
 
-int8_t TRACK_GetError(void)
+int8_t TRACK_GetErrorFromRaw(uint8_t raw)
 {
-    uint8_t raw = TRACK_Read();
     int8_t  error_sum = 0;
     int8_t  count = 0;
 
@@ -84,6 +83,70 @@ int8_t TRACK_GetError(void)
     if (count == 0) return 0;   /* 完全脱线: 保持直行 */
 
     return error_sum / count;
+}
+
+int8_t TRACK_GetError(void)
+{
+    return TRACK_GetErrorFromRaw(TRACK_Read());
+}
+
+/* ================================================================
+ * 从多个互不相连的黑色区域中选择真正的赛道
+ *
+ * 例如上一帧赛道在 OUT5，本帧读到 OUT1 + OUT5 (10001)，
+ * 则保留离上一位置更近的 OUT5，将 OUT1 视为阴影或污渍。
+ * 连续的一片黑色仍作为同一个区域保留。
+ * ================================================================ */
+
+uint8_t TRACK_SelectLikelyLine(uint8_t raw, uint8_t previous_raw)
+{
+    uint8_t i = 0;
+    uint8_t component_count = 0;
+    uint8_t best_mask = raw;
+    int8_t previous_error;
+    int8_t best_distance = 127;
+
+    raw &= 0x1F;
+    previous_raw &= 0x1F;
+
+    if (raw == 0x00 || raw == 0x1F || previous_raw == 0x00) {
+        return raw;
+    }
+
+    previous_error = TRACK_GetErrorFromRaw(previous_raw);
+
+    while (i < 5) {
+        uint8_t component_mask = 0;
+        int8_t component_error;
+        int8_t distance;
+
+        while (i < 5 && !(raw & (1U << i))) {
+            i++;
+        }
+
+        if (i >= 5) {
+            break;
+        }
+
+        while (i < 5 && (raw & (1U << i))) {
+            component_mask |= (uint8_t)(1U << i);
+            i++;
+        }
+
+        component_count++;
+        component_error = TRACK_GetErrorFromRaw(component_mask);
+        distance = component_error - previous_error;
+        if (distance < 0) {
+            distance = -distance;
+        }
+
+        if (distance < best_distance) {
+            best_distance = distance;
+            best_mask = component_mask;
+        }
+    }
+
+    return (component_count > 1) ? best_mask : raw;
 }
 
 /* ================================================================

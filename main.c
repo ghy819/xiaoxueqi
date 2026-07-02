@@ -66,35 +66,100 @@ static void Telemetry_Send(uint8_t track_raw, int8_t error)
 static void Track_Run(void)
 {
     int8_t  error = 0, prev_error = 0;
+    int8_t  last_direction = 0;
+    int8_t  abs_error;
     int16_t correction, derivative;
     int16_t servo_target, servo_angle = 90;
-    int16_t base_speed, left_speed, right_speed;
-    uint8_t track_raw;
+    int16_t base_speed = TRACK_BASE_SPEED;
+    int16_t target_base_speed, left_speed, right_speed;
+    uint8_t sensor_raw, track_raw;
+    uint8_t control_raw = 0x04;
+    uint8_t lost_count = 0;
+    uint8_t full_black_count = 0;
     uint32_t last_telemetry = Delay_GetTick();
 
     while (1)
     {
-        /* 全黑线检测: 5 路全压线 → 停止 */
-        track_raw = TRACK_Read();
-        if (track_raw == 0x1F) {
-            MOTOR_SetSpeeds(0, 0);
-            Telemetry_Send(track_raw, error);
-            break;
+        sensor_raw = TRACK_Read();
+
+        /* 短暂全黑可能来自阴影或污渍，连续约 30ms 才确认停止。
+         * 确认前保持上一帧可靠的赛道位置，避免突然直行或急转。 */
+        if (sensor_raw == 0x1F) {
+            if (full_black_count < TRACK_FULL_BLACK_CONFIRM_COUNT) {
+                full_black_count++;
+            }
+
+            if (full_black_count >= TRACK_FULL_BLACK_CONFIRM_COUNT) {
+                MOTOR_SetSpeeds(0, 0);
+                Telemetry_Send(sensor_raw, error);
+                break;
+            }
+
+            track_raw = control_raw;
+        } else {
+            full_black_count = 0;
+
+            /* 若同时出现多块互不相连的黑色，只跟随最接近上一帧
+             * 赛道位置的一块，过滤远处阴影和污渍。 */
+            track_raw = TRACK_SelectLikelyLine(sensor_raw, control_raw);
         }
 
+        /* 一次采样同时用于偏差和动作判断，避免前后两次读取不一致。
+         * 短暂全白保持上一判断；连续全白才向赛道最后所在侧救车。 */
         prev_error = error;
-        error      = TRACK_GetError();
+        if (track_raw != 0x00) {
+            lost_count = 0;
+            control_raw = track_raw;
+            error = TRACK_GetErrorFromRaw(track_raw);
+
+            if (error < 0) {
+                last_direction = -1;
+            } else if (error > 0) {
+                last_direction = 1;
+            }
+        } else {
+            if (lost_count < TRACK_LOST_CONFIRM_COUNT) {
+                lost_count++;
+            }
+
+            prev_error = error;
+            if (lost_count >= TRACK_LOST_CONFIRM_COUNT) {
+                if (last_direction < 0) {
+                    error = -4;
+                    prev_error = error;
+                    control_raw = 0x01;
+                } else if (last_direction > 0) {
+                    error = 4;
+                    prev_error = error;
+                    control_raw = 0x10;
+                }
+            }
+        }
 
         /* ---- PD 控制 ---- */
         correction = TRACK_GetCorrection(error);               /* P 项        */
         derivative = (int16_t)(error - prev_error) * TRACK_KD; /* D 项        */
         correction += derivative;
 
-        /* ---- 弯道自动减速 ---- */
-        if ((error > 0 ? error : -error) >= TRACK_CURVE_SLOW) {
-            base_speed = TRACK_BASE_SPEED * TRACK_CURVE_RATIO / 100;
+        /* ---- 弯道分级减速 ---- */
+        abs_error = (error > 0) ? error : -error;
+        if (abs_error >= 2) {
+            target_base_speed = TRACK_BASE_SPEED *
+                                TRACK_CURVE_SHARP_RATIO / 100;
+        } else if (abs_error == 1) {
+            target_base_speed = TRACK_BASE_SPEED *
+                                TRACK_CURVE_ENTRY_RATIO / 100;
         } else {
-            base_speed = TRACK_BASE_SPEED;
+            target_base_speed = TRACK_BASE_SPEED;
+        }
+
+        if (target_base_speed < base_speed) {
+            base_speed = target_base_speed;
+        } else if (base_speed < target_base_speed) {
+            base_speed += TRACK_SPEED_RECOVERY_STEP;
+            if (base_speed > target_base_speed) {
+                base_speed = target_base_speed;
+            }
         }
 
         /* ---- 舵机转向 (低通滤波, 消除抖动) ---- */
@@ -107,10 +172,10 @@ static void Track_Run(void)
         /* ---- 电机差速及边缘原地纠偏 ----
          * OUT1 压线: 线在车辆左侧，左轮后退、右轮前进
          * OUT5 压线: 线在车辆右侧，左轮前进、右轮后退 */
-        if ((track_raw & 0x01) && !(track_raw & 0x10)) {
+        if ((control_raw & 0x01) && !(control_raw & 0x10)) {
             left_speed  = -TRACK_PIVOT_SPEED;
             right_speed =  TRACK_PIVOT_SPEED;
-        } else if ((track_raw & 0x10) && !(track_raw & 0x01)) {
+        } else if ((control_raw & 0x10) && !(control_raw & 0x01)) {
             left_speed  =  TRACK_PIVOT_SPEED;
             right_speed = -TRACK_PIVOT_SPEED;
         } else {
@@ -129,7 +194,7 @@ static void Track_Run(void)
 
         if ((Delay_GetTick() - last_telemetry) >= TELEMETRY_INTERVAL_MS) {
             last_telemetry = Delay_GetTick();
-            Telemetry_Send(track_raw, error);
+            Telemetry_Send(sensor_raw, error);
         }
 
         Delay_ms(2);
