@@ -61,6 +61,50 @@ uint8_t TRACK_Read(void)
 }
 
 /* ================================================================
+ * 三次跨周期多数滤波
+ *
+ * 每一路传感器最近 3 次采样中至少有 2 次为黑线，才输出黑线。
+ * 首次调用直接用当前值填满历史，避免车辆启动时等待两帧。
+ * ================================================================ */
+
+uint8_t TRACK_FilterSample(uint8_t raw)
+{
+    static uint8_t history[3];
+    static uint8_t history_index = 0;
+    static uint8_t initialized = 0;
+    uint8_t filtered = 0;
+    uint8_t i;
+
+    raw &= 0x1F;
+
+    if (!initialized) {
+        history[0] = raw;
+        history[1] = raw;
+        history[2] = raw;
+        initialized = 1;
+        return raw;
+    }
+
+    history[history_index] = raw;
+    history_index = (uint8_t)((history_index + 1U) % 3U);
+
+    for (i = 0; i < 5; i++) {
+        uint8_t mask = (uint8_t)(1U << i);
+        uint8_t votes = 0;
+
+        if (history[0] & mask) votes++;
+        if (history[1] & mask) votes++;
+        if (history[2] & mask) votes++;
+
+        if (votes >= 2) {
+            filtered |= mask;
+        }
+    }
+
+    return filtered;
+}
+
+/* ================================================================
  * 计算位置偏差 (-4 ~ +4)
  *
  *   0  = 居中 (OUT3 压线, 或对称压线)

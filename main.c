@@ -72,7 +72,7 @@ static void Track_Run(void)
     int16_t servo_target, servo_angle = 90;
     int16_t base_speed = TRACK_BASE_SPEED;
     int16_t target_base_speed, left_speed, right_speed;
-    uint8_t sensor_raw, track_raw;
+    uint8_t sensor_raw, filtered_raw, track_raw;
     uint8_t control_raw = 0x04;
     uint8_t lost_count = 0;
     uint8_t full_black_count = 0;
@@ -81,10 +81,11 @@ static void Track_Run(void)
     while (1)
     {
         sensor_raw = TRACK_Read();
+        filtered_raw = TRACK_FilterSample(sensor_raw);
 
-        /* 短暂全黑可能来自阴影或污渍，连续约 30ms 才确认停止。
+        /* 短暂全黑可能来自阴影或污渍，连续约 40ms 才确认停止。
          * 确认前保持上一帧可靠的赛道位置，避免突然直行或急转。 */
-        if (sensor_raw == 0x1F) {
+        if (filtered_raw == 0x1F) {
             if (full_black_count < TRACK_FULL_BLACK_CONFIRM_COUNT) {
                 full_black_count++;
             }
@@ -101,7 +102,7 @@ static void Track_Run(void)
 
             /* 若同时出现多块互不相连的黑色，只跟随最接近上一帧
              * 赛道位置的一块，过滤远处阴影和污渍。 */
-            track_raw = TRACK_SelectLikelyLine(sensor_raw, control_raw);
+            track_raw = TRACK_SelectLikelyLine(filtered_raw, control_raw);
         }
 
         /* 一次采样同时用于偏差和动作判断，避免前后两次读取不一致。
@@ -141,6 +142,12 @@ static void Track_Run(void)
         derivative = (int16_t)(error - prev_error) * TRACK_KD; /* D 项        */
         correction += derivative;
 
+        /* OUT2/OUT4 靠近中线，降低其转向幅度以抑制直线抖动。
+         * OUT1/OUT5 的极限纠偏幅度保持不变。 */
+        if (error == -2 || error == 2) {
+            correction = correction * TRACK_INNER_STEER_RATIO / 100;
+        }
+
         /* ---- 弯道分级减速 ---- */
         abs_error = (error > 0) ? error : -error;
         if (abs_error >= 2) {
@@ -164,20 +171,37 @@ static void Track_Run(void)
 
         /* ---- 舵机转向 (低通滤波, 消除抖动) ---- */
         servo_target = 90 + correction;
-        if (servo_target <  30) servo_target =  30;
-        if (servo_target > 150) servo_target = 150;
-        servo_angle = (servo_angle * 2 + servo_target * 3) / 5;
+        if (servo_target < TRACK_SERVO_MIN_ANGLE) {
+            servo_target = TRACK_SERVO_MIN_ANGLE;
+        }
+        if (servo_target > TRACK_SERVO_MAX_ANGLE) {
+            servo_target = TRACK_SERVO_MAX_ANGLE;
+        }
+
+        /* OUT2/OUT4 触发及随后回中时缓慢跟随，避免舵机来回急摆；
+         * OUT1/OUT5 仍使用原来的快速响应。 */
+        if (error == -2 || error == 2 ||
+            (error == 0 && (prev_error == -2 || prev_error == 2))) {
+            servo_angle =
+                (servo_angle * TRACK_INNER_SERVO_OLD_WEIGHT +
+                 servo_target * TRACK_INNER_SERVO_NEW_WEIGHT) /
+                (TRACK_INNER_SERVO_OLD_WEIGHT +
+                 TRACK_INNER_SERVO_NEW_WEIGHT);
+        } else {
+            servo_angle = (servo_angle * 2 + servo_target * 3) / 5;
+        }
         SERVO_SetAngle((uint8_t)servo_angle);
 
-        /* ---- 电机差速及边缘原地纠偏 ----
-         * OUT1 压线: 线在车辆左侧，左轮后退、右轮前进
-         * OUT5 压线: 线在车辆右侧，左轮前进、右轮后退 */
+        /* ---- 电机差速及边缘前进纠偏 ----
+         * OUT1 压线: 线在车辆左侧，左轮慢、右轮快
+         * OUT5 压线: 线在车辆右侧，左轮快、右轮慢
+         * 两轮始终向前，避免原地旋转造成车辆停顿。 */
         if ((control_raw & 0x01) && !(control_raw & 0x10)) {
-            left_speed  = -TRACK_PIVOT_SPEED;
-            right_speed =  TRACK_PIVOT_SPEED;
+            left_speed  = TRACK_EDGE_INNER_SPEED;
+            right_speed = TRACK_EDGE_OUTER_SPEED;
         } else if ((control_raw & 0x10) && !(control_raw & 0x01)) {
-            left_speed  =  TRACK_PIVOT_SPEED;
-            right_speed = -TRACK_PIVOT_SPEED;
+            left_speed  = TRACK_EDGE_OUTER_SPEED;
+            right_speed = TRACK_EDGE_INNER_SPEED;
         } else {
             left_speed  = base_speed +
                           correction * TRACK_DIFF_RATIO / 100;
@@ -197,7 +221,7 @@ static void Track_Run(void)
             Telemetry_Send(sensor_raw, error);
         }
 
-        Delay_ms(2);
+        Delay_ms(TRACK_CONTROL_PERIOD_MS);
     }
 }
 
