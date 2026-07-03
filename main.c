@@ -74,7 +74,6 @@ static void Track_Run(void)
     int8_t  abs_error;
     int16_t correction, derivative;
     int16_t inner_ratio;
-    int16_t diff_ratio;
     int16_t servo_target, servo_angle = 90;
     int16_t base_speed = TRACK_BASE_SPEED;
     int16_t target_base_speed, left_speed, right_speed;
@@ -336,19 +335,21 @@ static void Track_Run(void)
          * OUT1 压线: 线在车辆左侧，左轮慢、右轮快
          * OUT5 压线: 线在车辆右侧，左轮快、右轮慢
          * 两轮始终向前，避免原地旋转造成车辆停顿。 */
-        if ((control_raw & 0x01) && !(control_raw & 0x10)) {
+        if (!curve_mode) {
+            /* 直道微调只使用舵机，两侧电机始终保持满速。 */
+            left_speed  = TRACK_BASE_SPEED;
+            right_speed = TRACK_BASE_SPEED;
+        } else if ((control_raw & 0x01) && !(control_raw & 0x10)) {
             left_speed  = TRACK_EDGE_INNER_SPEED;
             right_speed = TRACK_EDGE_OUTER_SPEED;
         } else if ((control_raw & 0x10) && !(control_raw & 0x01)) {
             left_speed  = TRACK_EDGE_OUTER_SPEED;
             right_speed = TRACK_EDGE_INNER_SPEED;
         } else {
-            diff_ratio = curve_mode ?
-                         TRACK_DIFF_RATIO : TRACK_STRAIGHT_DIFF_RATIO;
             left_speed  = base_speed +
-                          correction * diff_ratio / 100;
+                          correction * TRACK_DIFF_RATIO / 100;
             right_speed = base_speed -
-                          correction * diff_ratio / 100;
+                          correction * TRACK_DIFF_RATIO / 100;
         }
 
         if (left_speed  >  100) left_speed  =  100;

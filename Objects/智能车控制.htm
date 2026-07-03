@@ -3,9 +3,9 @@
 <title>Static Call Graph - [.\Objects\智能车控制.axf]</title></head>
 <body><HR>
 <H1>Static Call Graph for image .\Objects\智能车控制.axf</H1><HR>
-<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060750: Last Updated: Fri Jul 03 09:42:32 2026
+<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060750: Last Updated: Fri Jul 03 09:48:35 2026
 <BR><P>
-<H3>Maximum Stack Usage =        220 bytes + Unknown(Cycles, Untraceable Function Pointers)</H3><H3>
+<H3>Maximum Stack Usage =        212 bytes + Unknown(Cycles, Untraceable Function Pointers)</H3><H3>
 Call chain for Maximum Stack Depth:</H3>
 main &rArr; Track_Run &rArr; Telemetry_Send &rArr; UART_SendInt32 &rArr; UART_SendChar &rArr; USART_ITConfig
 <P>
@@ -783,7 +783,7 @@ Global Symbols
 <P><STRONG><a name="[a9]"></a>__scatterload_zeroinit</STRONG> (Thumb, 14 bytes, Stack size unknown bytes, handlers.o(i.__scatterload_zeroinit), UNUSED)
 
 <P><STRONG><a name="[46]"></a>main</STRONG> (Thumb, 50 bytes, Stack size 0 bytes, main.o(i.main))
-<BR><BR>[Stack]<UL><LI>Max Depth = 220<LI>Call Chain = main &rArr; Track_Run &rArr; Telemetry_Send &rArr; UART_SendInt32 &rArr; UART_SendChar &rArr; USART_ITConfig
+<BR><BR>[Stack]<UL><LI>Max Depth = 212<LI>Call Chain = main &rArr; Track_Run &rArr; Telemetry_Send &rArr; UART_SendInt32 &rArr; UART_SendChar &rArr; USART_ITConfig
 </UL>
 <BR>[Calls]<UL><LI><a href="#[8c]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;UART_SendString
 <LI><a href="#[98]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;UART_Init
@@ -824,8 +824,8 @@ Local Symbols
 <BR>[Called By]<UL><LI><a href="#[93]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;Track_Run
 </UL>
 
-<P><STRONG><a name="[93]"></a>Track_Run</STRONG> (Thumb, 1098 bytes, Stack size 120 bytes, main.o(i.Track_Run))
-<BR><BR>[Stack]<UL><LI>Max Depth = 220<LI>Call Chain = Track_Run &rArr; Telemetry_Send &rArr; UART_SendInt32 &rArr; UART_SendChar &rArr; USART_ITConfig
+<P><STRONG><a name="[93]"></a>Track_Run</STRONG> (Thumb, 1102 bytes, Stack size 112 bytes, main.o(i.Track_Run))
+<BR><BR>[Stack]<UL><LI>Max Depth = 212<LI>Call Chain = Track_Run &rArr; Telemetry_Send &rArr; UART_SendInt32 &rArr; UART_SendChar &rArr; USART_ITConfig
 </UL>
 <BR>[Calls]<UL><LI><a href="#[89]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;TRACK_SelectLikelyLine
 <LI><a href="#[88]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;TRACK_Read

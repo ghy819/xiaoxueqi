@@ -76,7 +76,6 @@
 #define TRACK_CURVE_SHARP_RATIO  78 /* |error| >= 2: 基准速度的 78%    */
 #define TRACK_SPEED_RECOVERY_STEP 3 /* 出弯后每周期恢复 3%             */
 #define TRACK_DIFF_RATIO    80      /* 普通转弯差速 = 修正量 × 80%     */
-#define TRACK_STRAIGHT_DIFF_RATIO 25 /* 直道微调减小差速以保持高速      */
 #define TRACK_EDGE_INNER_SPEED 63   /* OUT1/OUT5 纠偏时内侧轮速度      */
 #define TRACK_EDGE_OUTER_SPEED 93   /* OUT1/OUT5 纠偏时外侧轮速度      */
 #define TRACK_LOST_CONFIRM_COUNT 5  /* 连续全白约 15ms 才确认脱线      */
