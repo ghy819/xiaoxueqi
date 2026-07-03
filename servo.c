@@ -2,7 +2,7 @@
   * @file    servo.c
   * @brief   舵机驱动 — 基于 STM32 标准外设库 (SPL)
   *          PB1 → TIM3_CH4, 50Hz PWM, 0.5~2.5ms 脉冲
-  */
+    */
 
 #include "servo.h"
 
