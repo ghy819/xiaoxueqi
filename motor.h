@@ -36,8 +36,8 @@
 #define MOTOR_RIGHT_INVERT  0       /* 1 = 右侧电机方向取反            */
 
 /* ---------- PWM 参数 ---------- */
-#define MOTOR_PWM_PERIOD    999     /* ARR: 1MHz / 1000 = 1kHz PWM */
-#define MOTOR_PWM_PSC       71      /* PSC: 72MHz / 72 = 1MHz */
+#define MOTOR_PWM_PERIOD    999     /* ARR: 1MHz / 1000 = 1kHz PWM     */
+#define MOTOR_PWM_PSC       71      /* PSC: 72MHz / 72 = 1MHz          */
 #define MOTOR_SPEED_MAX     100     /* 速度百分比最大值 */
 #define MOTOR_SPEED_MIN     -100    /* 速度百分比最小值 */
 

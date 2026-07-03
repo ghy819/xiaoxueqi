@@ -22,3 +22,4 @@
 .\objects\main.o: track.h
 .\objects\main.o: uart.h
 .\objects\main.o: encoder.h
+.\objects\main.o: bluetooth.h

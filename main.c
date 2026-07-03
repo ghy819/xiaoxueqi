@@ -11,8 +11,10 @@
 #include "track.h"
 #include "uart.h"
 #include "encoder.h"
+#include "bluetooth.h"
 
 #define TELEMETRY_INTERVAL_MS  50
+#define BLUETOOTH_TELEMETRY_INTERVAL_MS 50
 
 /* ================================================================
  * NVIC 配置
@@ -62,6 +64,47 @@ static void Telemetry_Send(uint8_t track_raw, int8_t error,
     UART_SendString("\r\n");
 }
 
+static void Bluetooth_Telemetry_Send(uint8_t track_raw, int8_t error,
+                                     uint8_t curve_mode)
+{
+    static int32_t last_encoder_left = 0;
+    static int32_t last_encoder_right = 0;
+    int32_t encoder_left = ENCODER_GetTotal(ENCODER_LEFT);
+    int32_t encoder_right = ENCODER_GetTotal(ENCODER_RIGHT);
+    int32_t encoder_left_delta = encoder_left - last_encoder_left;
+    int32_t encoder_right_delta = encoder_right - last_encoder_right;
+    uint8_t i;
+
+    last_encoder_left = encoder_left;
+    last_encoder_right = encoder_right;
+
+    BLUETOOTH_SendString("TRK=");
+    for (i = 0; i < 5; i++) {
+        BLUETOOTH_SendChar((track_raw & (1U << i)) ? '1' : '0');
+    }
+    BLUETOOTH_SendString(" ERR=");
+    BLUETOOTH_SendInt32(error);
+    BLUETOOTH_SendString(" MODE=");
+    BLUETOOTH_SendChar(curve_mode ? 'C' : 'S');
+    BLUETOOTH_SendString(" ENC_L=");
+    BLUETOOTH_SendInt32(encoder_left);
+    BLUETOOTH_SendString(" DL=");
+    BLUETOOTH_SendInt32(encoder_left_delta);
+    BLUETOOTH_SendString(" ENC_R=");
+    BLUETOOTH_SendInt32(encoder_right);
+    BLUETOOTH_SendString(" DR=");
+    BLUETOOTH_SendInt32(encoder_right_delta);
+    BLUETOOTH_SendString(" SERVO=");
+    BLUETOOTH_SendInt32(SERVO_GetAngle());
+    BLUETOOTH_SendString(" PULSE=");
+    BLUETOOTH_SendInt32(SERVO_GetPulse());
+    BLUETOOTH_SendString(" MOTOR_L=");
+    BLUETOOTH_SendInt32(MOTOR_GetSpeed(MOTOR_LEFT));
+    BLUETOOTH_SendString(" MOTOR_R=");
+    BLUETOOTH_SendInt32(MOTOR_GetSpeed(MOTOR_RIGHT));
+    BLUETOOTH_SendString("\r\n");
+}
+
 /* ================================================================
  * 循迹控制 — 舵机转向 + 电机差速辅助 
  * ================================================================ */
@@ -83,11 +126,11 @@ static void Track_Run(void)
     uint8_t inner_error_count = 0;
     uint8_t full_black_count = 0;
     uint8_t curve_mode = 0;
-    uint8_t curve_enter_count = 0;
     uint8_t straight_enter_count = 0;
     uint8_t outer_candidate_raw = 0;
     uint8_t outer_candidate_count = 0;
     uint32_t last_telemetry = Delay_GetTick();
+    uint32_t last_bluetooth_telemetry = Delay_GetTick();
 
     while (1)
     {
@@ -187,23 +230,12 @@ static void Track_Run(void)
         }
 
         /* 顺时针椭圆赛道状态判断:
-         * OUT4 连续出现或 OUT5 出现时进入弯道；
+         * OUT2/OUT4 持续识别仍按直道处理，OUT5 出现时进入弯道；
          * 回到中心并稳定约 60ms 后才恢复直道，防止状态来回切换。 */
         if (!curve_mode) {
             straight_enter_count = 0;
             if (error >= 3) {
                 curve_mode = 1;
-                curve_enter_count = 0;
-            } else if (error >= 2) {
-                if (curve_enter_count < TRACK_CURVE_ENTER_COUNT) {
-                    curve_enter_count++;
-                }
-                if (curve_enter_count >= TRACK_CURVE_ENTER_COUNT) {
-                    curve_mode = 1;
-                    curve_enter_count = 0;
-                }
-            } else {
-                curve_enter_count = 0;
             }
         } else {
             /* 采用累计证据而不是要求连续完全居中。
@@ -253,8 +285,13 @@ static void Track_Run(void)
             correction =
                 correction * TRACK_STRAIGHT_SMALL_STEER_RATIO / 100;
         } else if (!curve_mode && (error == -2 || error == 2)) {
-            correction =
-                correction * TRACK_STRAIGHT_INNER_STEER_RATIO / 100;
+            if (inner_error_count >= TRACK_STRAIGHT_INNER_CENTER_COUNT) {
+                /* OUT2/OUT4 持续稳定识别时按直道处理，舵机回中。 */
+                correction = 0;
+            } else {
+                correction =
+                    correction * TRACK_STRAIGHT_INNER_STEER_RATIO / 100;
+            }
         } else if (error == -2) {
             inner_ratio = TRACK_OUT2_STEER_RATIO;
             if (inner_error_count == 1) {
@@ -364,6 +401,12 @@ static void Track_Run(void)
             Telemetry_Send(sensor_raw, error, curve_mode);
         }
 
+        if ((Delay_GetTick() - last_bluetooth_telemetry) >=
+            BLUETOOTH_TELEMETRY_INTERVAL_MS) {
+            last_bluetooth_telemetry = Delay_GetTick();
+            Bluetooth_Telemetry_Send(sensor_raw, error, curve_mode);
+        }
+
         Delay_ms(TRACK_CONTROL_PERIOD_MS);
     }
 }
@@ -378,12 +421,14 @@ int main(void)
 
     SysTick_Init();
     UART_Init();
+    BLUETOOTH_Init();
     ENCODER_Init();
     MOTOR_Init();
     SERVO_Init();
     TRACK_Init();
 
     UART_SendString("READY USART1 115200\r\n");
+    BLUETOOTH_SendString("READY USART3 115200\r\n");
 
     /* 上电等待 3 秒 */
     Delay_ms(3000);
