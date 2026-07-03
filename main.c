@@ -207,16 +207,25 @@ static void Track_Run(void)
                 curve_enter_count = 0;
             }
         } else {
-            if (error >= -1 && error <= 1) {
-                if (straight_enter_count < TRACK_STRAIGHT_ENTER_COUNT) {
-                    straight_enter_count++;
-                }
-                if (straight_enter_count >= TRACK_STRAIGHT_ENTER_COUNT) {
-                    curve_mode = 0;
+            /* 采用累计证据而不是要求连续完全居中。
+             * 顺时针弯道中的右侧偏差会扣分；居中和左侧回正会加分。
+             * 偶发一次 OUT2/OUT4 不再把直道判断进度全部清零。 */
+            if (error >= 2) {
+                if (straight_enter_count > 3) {
+                    straight_enter_count -= 3;
+                } else {
                     straight_enter_count = 0;
                 }
             } else {
-                straight_enter_count = 0;
+                uint8_t evidence_step = (error <= -2) ? 3 : 1;
+
+                if (straight_enter_count + evidence_step >=
+                    TRACK_STRAIGHT_ENTER_COUNT) {
+                    curve_mode = 0;
+                    straight_enter_count = 0;
+                } else {
+                    straight_enter_count += evidence_step;
+                }
             }
         }
 

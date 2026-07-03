@@ -62,7 +62,7 @@
 #define TRACK_CURVE_ENTER_COUNT 2   /* OUT4 连续 2 次后进入弯道模式    */
 #define TRACK_STRAIGHT_ENTER_COUNT 20 /* 回中约 60ms 后进入直道模式     */
 #define TRACK_STRAIGHT_OUTER_CONFIRM_COUNT 3 /* 直道外侧信号确认次数     */
-#define TRACK_STRAIGHT_SMALL_STEER_RATIO 25 /* 直道轻微偏差转向量       */
+#define TRACK_STRAIGHT_SMALL_STEER_RATIO 0  /* 直道中心附近设为转向死区 */
 #define TRACK_STRAIGHT_INNER_STEER_RATIO 25 /* 直道 OUT2/OUT4 转向量    */
 #define TRACK_STRAIGHT_SERVO_OLD_WEIGHT 5
 #define TRACK_STRAIGHT_SERVO_NEW_WEIGHT 1
