@@ -51,21 +51,24 @@
 
 /* PD 控制: 微分项系数 (预判弯道趋势) */
 #define TRACK_KD            12      /* 微分增益, 根据实测调整          */
-#define TRACK_INNER_STEER_RATIO 60  /* OUT2/OUT4 转向量保留 60%        */
+#define TRACK_D_LIMIT       12      /* 限制微分冲击，避免舵机反向抖动 */
+#define TRACK_INNER_STEER_INITIAL_RATIO 35 /* 首次压到 OUT2/OUT4 轻纠偏 */
+#define TRACK_OUT2_STEER_RATIO 60   /* OUT2 转向量保留 60%             */
+#define TRACK_OUT4_STEER_RATIO 75   /* 顺时针时增强 OUT4 右转响应      */
 #define TRACK_INNER_SERVO_OLD_WEIGHT 3 /* OUT2/OUT4 平滑时保留旧角度    */
 #define TRACK_INNER_SERVO_NEW_WEIGHT 2 /* OUT2/OUT4 平滑时加入目标角度  */
 
 /* 舵机转向范围: 以 90° 为中位，限制机械摆角避免急甩和轮胎阻力 */
 #define TRACK_SERVO_MIN_ANGLE 55
-#define TRACK_SERVO_MAX_ANGLE 125
+#define TRACK_SERVO_MAX_ANGLE 130   /* 右转多保留 5°，防止冲向外圈     */
 
 /* 弯道分级减速: 刚出现偏差就减速，严重偏离时进一步降速 */
-#define TRACK_CURVE_ENTRY_RATIO  90 /* |error| = 1: 基准速度的 90%     */
-#define TRACK_CURVE_SHARP_RATIO  75 /* |error| >= 2: 基准速度的 75%    */
+#define TRACK_CURVE_ENTRY_RATIO 100 /* |error| = 1: 直线轻微偏差不减速 */
+#define TRACK_CURVE_SHARP_RATIO  78 /* |error| >= 2: 基准速度的 78%    */
 #define TRACK_SPEED_RECOVERY_STEP 3 /* 出弯后每周期恢复 3%             */
 #define TRACK_DIFF_RATIO    80      /* 普通转弯差速 = 修正量 × 80%     */
-#define TRACK_EDGE_INNER_SPEED 60   /* OUT1/OUT5 纠偏时内侧轮速度      */
-#define TRACK_EDGE_OUTER_SPEED 90   /* OUT1/OUT5 纠偏时外侧轮速度      */
+#define TRACK_EDGE_INNER_SPEED 63   /* OUT1/OUT5 纠偏时内侧轮速度      */
+#define TRACK_EDGE_OUTER_SPEED 93   /* OUT1/OUT5 纠偏时外侧轮速度      */
 #define TRACK_LOST_CONFIRM_COUNT 5  /* 连续全白约 15ms 才确认脱线      */
 #define TRACK_FULL_BLACK_CONFIRM_COUNT 13 /* 连续全黑约 40ms 才确认停止 */
 

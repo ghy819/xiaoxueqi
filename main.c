@@ -67,14 +67,17 @@ static void Track_Run(void)
 {
     int8_t  error = 0, prev_error = 0;
     int8_t  last_direction = 0;
+    int8_t  inner_error_direction = 0;
     int8_t  abs_error;
     int16_t correction, derivative;
+    int16_t inner_ratio;
     int16_t servo_target, servo_angle = 90;
     int16_t base_speed = TRACK_BASE_SPEED;
     int16_t target_base_speed, left_speed, right_speed;
     uint8_t sensor_raw, filtered_raw, track_raw;
     uint8_t control_raw = 0x04;
     uint8_t lost_count = 0;
+    uint8_t inner_error_count = 0;
     uint8_t full_black_count = 0;
     uint32_t last_telemetry = Delay_GetTick();
 
@@ -137,15 +140,61 @@ static void Track_Run(void)
             }
         }
 
+        /* OUT2/OUT4 连续出现时逐步增加转向量。
+         * 直线上的短暂偏差只轻微纠正，持续偏差才按弯道处理。 */
+        if (error == -2 || error == 2) {
+            if (inner_error_direction == error) {
+                if (inner_error_count < 3) {
+                    inner_error_count++;
+                }
+            } else {
+                inner_error_direction = error;
+                inner_error_count = 1;
+            }
+        } else {
+            inner_error_direction = 0;
+            inner_error_count = 0;
+        }
+
         /* ---- PD 控制 ---- */
         correction = TRACK_GetCorrection(error);               /* P 项        */
-        derivative = (int16_t)(error - prev_error) * TRACK_KD; /* D 项        */
+
+        /* 中心附近只做柔和的比例纠偏，避免误差在 -1/0/+1 间变化时
+         * 微分项把舵机反复推向两侧。进入明显弯道后才启用微分。 */
+        if (error >= -1 && error <= 1 &&
+            prev_error >= -1 && prev_error <= 1) {
+            derivative = 0;
+        } else {
+            derivative = (int16_t)(error - prev_error) * TRACK_KD;
+            if (derivative > TRACK_D_LIMIT) {
+                derivative = TRACK_D_LIMIT;
+            }
+            if (derivative < -TRACK_D_LIMIT) {
+                derivative = -TRACK_D_LIMIT;
+            }
+        }
         correction += derivative;
 
         /* OUT2/OUT4 靠近中线，降低其转向幅度以抑制直线抖动。
          * OUT1/OUT5 的极限纠偏幅度保持不变。 */
-        if (error == -2 || error == 2) {
-            correction = correction * TRACK_INNER_STEER_RATIO / 100;
+        if (error == -2) {
+            inner_ratio = TRACK_OUT2_STEER_RATIO;
+            if (inner_error_count == 1) {
+                inner_ratio = TRACK_INNER_STEER_INITIAL_RATIO;
+            } else if (inner_error_count == 2) {
+                inner_ratio = (TRACK_INNER_STEER_INITIAL_RATIO +
+                               TRACK_OUT2_STEER_RATIO) / 2;
+            }
+            correction = correction * inner_ratio / 100;
+        } else if (error == 2) {
+            inner_ratio = TRACK_OUT4_STEER_RATIO;
+            if (inner_error_count == 1) {
+                inner_ratio = TRACK_INNER_STEER_INITIAL_RATIO;
+            } else if (inner_error_count == 2) {
+                inner_ratio = (TRACK_INNER_STEER_INITIAL_RATIO +
+                               TRACK_OUT4_STEER_RATIO) / 2;
+            }
+            correction = correction * inner_ratio / 100;
         }
 
         /* ---- 弯道分级减速 ---- */
@@ -178,10 +227,11 @@ static void Track_Run(void)
             servo_target = TRACK_SERVO_MAX_ANGLE;
         }
 
-        /* OUT2/OUT4 触发及随后回中时缓慢跟随，避免舵机来回急摆；
+        /* 轻微偏差、OUT2/OUT4 触发及随后回中时缓慢跟随；
          * OUT1/OUT5 仍使用原来的快速响应。 */
-        if (error == -2 || error == 2 ||
-            (error == 0 && (prev_error == -2 || prev_error == 2))) {
+        if ((error >= -2 && error <= 2 && error != 0) ||
+            (error == 0 && prev_error >= -2 && prev_error <= 2 &&
+             prev_error != 0)) {
             servo_angle =
                 (servo_angle * TRACK_INNER_SERVO_OLD_WEIGHT +
                  servo_target * TRACK_INNER_SERVO_NEW_WEIGHT) /
