@@ -58,6 +58,14 @@
 #define TRACK_INNER_SERVO_OLD_WEIGHT 3 /* OUT2/OUT4 平滑时保留旧角度    */
 #define TRACK_INNER_SERVO_NEW_WEIGHT 2 /* OUT2/OUT4 平滑时加入目标角度  */
 
+/* 顺时针椭圆赛道的直道/弯道识别与直道稳定参数 */
+#define TRACK_CURVE_ENTER_COUNT 2   /* OUT4 连续 2 次后进入弯道模式    */
+#define TRACK_STRAIGHT_ENTER_COUNT 20 /* 回中约 60ms 后进入直道模式     */
+#define TRACK_STRAIGHT_SMALL_STEER_RATIO 40 /* 直道轻微偏差转向量       */
+#define TRACK_STRAIGHT_INNER_STEER_RATIO 35 /* 直道 OUT2/OUT4 转向量    */
+#define TRACK_STRAIGHT_SERVO_OLD_WEIGHT 4
+#define TRACK_STRAIGHT_SERVO_NEW_WEIGHT 1
+
 /* 舵机转向范围: 以 90° 为中位，限制机械摆角避免急甩和轮胎阻力 */
 #define TRACK_SERVO_MIN_ANGLE 55
 #define TRACK_SERVO_MAX_ANGLE 130   /* 右转多保留 5°，防止冲向外圈     */

@@ -27,7 +27,8 @@ static void NVIC_Configuration(void)
  * 串口遥测: 115200-8-N-1, USART1 TX=PA9 / RX=PA10
  * ================================================================ */
 
-static void Telemetry_Send(uint8_t track_raw, int8_t error)
+static void Telemetry_Send(uint8_t track_raw, int8_t error,
+                           uint8_t curve_mode)
 {
     int16_t encoder_left_delta = ENCODER_GetDelta(ENCODER_LEFT);
     int16_t encoder_right_delta = ENCODER_GetDelta(ENCODER_RIGHT);
@@ -40,6 +41,8 @@ static void Telemetry_Send(uint8_t track_raw, int8_t error)
 
     UART_SendString(" ERR=");
     UART_SendInt32(error);
+    UART_SendString(" MODE=");
+    UART_SendChar(curve_mode ? 'C' : 'S');
     UART_SendString(" ENC_L=");
     UART_SendInt32(ENCODER_GetTotal(ENCODER_LEFT));
     UART_SendString(" DL=");
@@ -79,6 +82,9 @@ static void Track_Run(void)
     uint8_t lost_count = 0;
     uint8_t inner_error_count = 0;
     uint8_t full_black_count = 0;
+    uint8_t curve_mode = 0;
+    uint8_t curve_enter_count = 0;
+    uint8_t straight_enter_count = 0;
     uint32_t last_telemetry = Delay_GetTick();
 
     while (1)
@@ -95,7 +101,7 @@ static void Track_Run(void)
 
             if (full_black_count >= TRACK_FULL_BLACK_CONFIRM_COUNT) {
                 MOTOR_SetSpeeds(0, 0);
-                Telemetry_Send(sensor_raw, error);
+                Telemetry_Send(sensor_raw, error, curve_mode);
                 break;
             }
 
@@ -156,6 +162,39 @@ static void Track_Run(void)
             inner_error_count = 0;
         }
 
+        /* 顺时针椭圆赛道状态判断:
+         * OUT4 连续出现或 OUT5 出现时进入弯道；
+         * 回到中心并稳定约 60ms 后才恢复直道，防止状态来回切换。 */
+        if (!curve_mode) {
+            straight_enter_count = 0;
+            if (error >= 3) {
+                curve_mode = 1;
+                curve_enter_count = 0;
+            } else if (error >= 2) {
+                if (curve_enter_count < TRACK_CURVE_ENTER_COUNT) {
+                    curve_enter_count++;
+                }
+                if (curve_enter_count >= TRACK_CURVE_ENTER_COUNT) {
+                    curve_mode = 1;
+                    curve_enter_count = 0;
+                }
+            } else {
+                curve_enter_count = 0;
+            }
+        } else {
+            if (error >= -1 && error <= 1) {
+                if (straight_enter_count < TRACK_STRAIGHT_ENTER_COUNT) {
+                    straight_enter_count++;
+                }
+                if (straight_enter_count >= TRACK_STRAIGHT_ENTER_COUNT) {
+                    curve_mode = 0;
+                    straight_enter_count = 0;
+                }
+            } else {
+                straight_enter_count = 0;
+            }
+        }
+
         /* ---- PD 控制 ---- */
         correction = TRACK_GetCorrection(error);               /* P 项        */
 
@@ -177,7 +216,13 @@ static void Track_Run(void)
 
         /* OUT2/OUT4 靠近中线，降低其转向幅度以抑制直线抖动。
          * OUT1/OUT5 的极限纠偏幅度保持不变。 */
-        if (error == -2) {
+        if (!curve_mode && error >= -1 && error <= 1) {
+            correction =
+                correction * TRACK_STRAIGHT_SMALL_STEER_RATIO / 100;
+        } else if (!curve_mode && (error == -2 || error == 2)) {
+            correction =
+                correction * TRACK_STRAIGHT_INNER_STEER_RATIO / 100;
+        } else if (error == -2) {
             inner_ratio = TRACK_OUT2_STEER_RATIO;
             if (inner_error_count == 1) {
                 inner_ratio = TRACK_INNER_STEER_INITIAL_RATIO;
@@ -199,7 +244,9 @@ static void Track_Run(void)
 
         /* ---- 弯道分级减速 ---- */
         abs_error = (error > 0) ? error : -error;
-        if (abs_error >= 2) {
+        if (!curve_mode && abs_error <= 2) {
+            target_base_speed = TRACK_BASE_SPEED;
+        } else if (abs_error >= 2) {
             target_base_speed = TRACK_BASE_SPEED *
                                 TRACK_CURVE_SHARP_RATIO / 100;
         } else if (abs_error == 1) {
@@ -229,7 +276,16 @@ static void Track_Run(void)
 
         /* 轻微偏差、OUT2/OUT4 触发及随后回中时缓慢跟随；
          * OUT1/OUT5 仍使用原来的快速响应。 */
-        if ((error >= -2 && error <= 2 && error != 0) ||
+        if (!curve_mode &&
+            ((error >= -2 && error <= 2 && error != 0) ||
+             (error == 0 && prev_error >= -2 && prev_error <= 2 &&
+              prev_error != 0))) {
+            servo_angle =
+                (servo_angle * TRACK_STRAIGHT_SERVO_OLD_WEIGHT +
+                 servo_target * TRACK_STRAIGHT_SERVO_NEW_WEIGHT) /
+                (TRACK_STRAIGHT_SERVO_OLD_WEIGHT +
+                 TRACK_STRAIGHT_SERVO_NEW_WEIGHT);
+        } else if ((error >= -2 && error <= 2 && error != 0) ||
             (error == 0 && prev_error >= -2 && prev_error <= 2 &&
              prev_error != 0)) {
             servo_angle =
@@ -268,7 +324,7 @@ static void Track_Run(void)
 
         if ((Delay_GetTick() - last_telemetry) >= TELEMETRY_INTERVAL_MS) {
             last_telemetry = Delay_GetTick();
-            Telemetry_Send(sensor_raw, error);
+            Telemetry_Send(sensor_raw, error, curve_mode);
         }
 
         Delay_ms(TRACK_CONTROL_PERIOD_MS);
