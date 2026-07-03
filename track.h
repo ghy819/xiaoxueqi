@@ -61,8 +61,9 @@
 /* 顺时针椭圆赛道的直道/弯道识别与直道稳定参数 */
 #define TRACK_CURVE_ENTER_COUNT 2   /* OUT4 连续 2 次后进入弯道模式    */
 #define TRACK_STRAIGHT_ENTER_COUNT 20 /* 回中约 60ms 后进入直道模式     */
-#define TRACK_STRAIGHT_SMALL_STEER_RATIO 20 /* 直道轻微偏差转向量       */
-#define TRACK_STRAIGHT_INNER_STEER_RATIO 20 /* 直道 OUT2/OUT4 转向量    */
+#define TRACK_STRAIGHT_OUTER_CONFIRM_COUNT 3 /* 直道外侧信号确认次数     */
+#define TRACK_STRAIGHT_SMALL_STEER_RATIO 25 /* 直道轻微偏差转向量       */
+#define TRACK_STRAIGHT_INNER_STEER_RATIO 25 /* 直道 OUT2/OUT4 转向量    */
 #define TRACK_STRAIGHT_SERVO_OLD_WEIGHT 5
 #define TRACK_STRAIGHT_SERVO_NEW_WEIGHT 1
 
@@ -75,6 +76,7 @@
 #define TRACK_CURVE_SHARP_RATIO  78 /* |error| >= 2: 基准速度的 78%    */
 #define TRACK_SPEED_RECOVERY_STEP 3 /* 出弯后每周期恢复 3%             */
 #define TRACK_DIFF_RATIO    80      /* 普通转弯差速 = 修正量 × 80%     */
+#define TRACK_STRAIGHT_DIFF_RATIO 25 /* 直道微调减小差速以保持高速      */
 #define TRACK_EDGE_INNER_SPEED 63   /* OUT1/OUT5 纠偏时内侧轮速度      */
 #define TRACK_EDGE_OUTER_SPEED 93   /* OUT1/OUT5 纠偏时外侧轮速度      */
 #define TRACK_LOST_CONFIRM_COUNT 5  /* 连续全白约 15ms 才确认脱线      */

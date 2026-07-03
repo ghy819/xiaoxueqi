@@ -147,6 +147,7 @@ uint8_t TRACK_SelectLikelyLine(uint8_t raw, uint8_t previous_raw)
     uint8_t i = 0;
     uint8_t component_count = 0;
     uint8_t best_mask = raw;
+    uint8_t ambiguous = 0;
     int8_t previous_error;
     int8_t best_distance = 127;
 
@@ -187,7 +188,15 @@ uint8_t TRACK_SelectLikelyLine(uint8_t raw, uint8_t previous_raw)
         if (distance < best_distance) {
             best_distance = distance;
             best_mask = component_mask;
+            ambiguous = 0;
+        } else if (distance == best_distance &&
+                   component_mask != best_mask) {
+            ambiguous = 1;
         }
+    }
+
+    if (component_count > 1 && ambiguous) {
+        return previous_raw;
     }
 
     return (component_count > 1) ? best_mask : raw;

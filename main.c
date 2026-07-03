@@ -74,6 +74,7 @@ static void Track_Run(void)
     int8_t  abs_error;
     int16_t correction, derivative;
     int16_t inner_ratio;
+    int16_t diff_ratio;
     int16_t servo_target, servo_angle = 90;
     int16_t base_speed = TRACK_BASE_SPEED;
     int16_t target_base_speed, left_speed, right_speed;
@@ -85,6 +86,8 @@ static void Track_Run(void)
     uint8_t curve_mode = 0;
     uint8_t curve_enter_count = 0;
     uint8_t straight_enter_count = 0;
+    uint8_t outer_candidate_raw = 0;
+    uint8_t outer_candidate_count = 0;
     uint32_t last_telemetry = Delay_GetTick();
 
     while (1)
@@ -112,6 +115,28 @@ static void Track_Run(void)
             /* 若同时出现多块互不相连的黑色，只跟随最接近上一帧
              * 赛道位置的一块，过滤远处阴影和污渍。 */
             track_raw = TRACK_SelectLikelyLine(filtered_raw, control_raw);
+        }
+
+        /* 直道中突然单独出现 OUT1/OUT5，可能是阴影或污渍。
+         * 连续确认前保持上一位置；弯道模式不做此延迟。 */
+        if (!curve_mode && (track_raw == 0x01 || track_raw == 0x10)) {
+            if (outer_candidate_raw == track_raw) {
+                if (outer_candidate_count <
+                    TRACK_STRAIGHT_OUTER_CONFIRM_COUNT) {
+                    outer_candidate_count++;
+                }
+            } else {
+                outer_candidate_raw = track_raw;
+                outer_candidate_count = 1;
+            }
+
+            if (outer_candidate_count <
+                TRACK_STRAIGHT_OUTER_CONFIRM_COUNT) {
+                track_raw = control_raw;
+            }
+        } else {
+            outer_candidate_raw = 0;
+            outer_candidate_count = 0;
         }
 
         /* 一次采样同时用于偏差和动作判断，避免前后两次读取不一致。
@@ -309,10 +334,12 @@ static void Track_Run(void)
             left_speed  = TRACK_EDGE_OUTER_SPEED;
             right_speed = TRACK_EDGE_INNER_SPEED;
         } else {
+            diff_ratio = curve_mode ?
+                         TRACK_DIFF_RATIO : TRACK_STRAIGHT_DIFF_RATIO;
             left_speed  = base_speed +
-                          correction * TRACK_DIFF_RATIO / 100;
+                          correction * diff_ratio / 100;
             right_speed = base_speed -
-                          correction * TRACK_DIFF_RATIO / 100;
+                          correction * diff_ratio / 100;
         }
 
         if (left_speed  >  100) left_speed  =  100;
