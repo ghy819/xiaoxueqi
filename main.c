@@ -12,9 +12,11 @@
 #include "uart.h"
 #include "encoder.h"
 #include "bluetooth.h"
+#include "oled.h"
 
 #define TELEMETRY_INTERVAL_MS  50
 #define BLUETOOTH_TELEMETRY_INTERVAL_MS 50
+#define OLED_UPDATE_INTERVAL_MS 100
 
 /* ================================================================
  * NVIC 配置
@@ -126,11 +128,13 @@ static void Track_Run(void)
     uint8_t inner_error_count = 0;
     uint8_t full_black_count = 0;
     uint8_t curve_mode = 0;
+    uint8_t curve_hold_count = 0;
     uint8_t straight_enter_count = 0;
     uint8_t outer_candidate_raw = 0;
     uint8_t outer_candidate_count = 0;
     uint32_t last_telemetry = Delay_GetTick();
     uint32_t last_bluetooth_telemetry = Delay_GetTick();
+    uint32_t last_oled_update = Delay_GetTick();
 
     while (1)
     {
@@ -236,26 +240,32 @@ static void Track_Run(void)
             straight_enter_count = 0;
             if (error >= 3) {
                 curve_mode = 1;
+                curve_hold_count = TRACK_CURVE_MIN_HOLD_COUNT;
             }
         } else {
+            if (curve_hold_count > 0) {
+                curve_hold_count--;
+                straight_enter_count = 0;
+            } else {
             /* 采用累计证据而不是要求连续完全居中。
              * 顺时针弯道中的右侧偏差会扣分；居中和左侧回正会加分。
              * 偶发一次 OUT2/OUT4 不再把直道判断进度全部清零。 */
-            if (error >= 2) {
-                if (straight_enter_count > 3) {
-                    straight_enter_count -= 3;
+                if (error >= 2) {
+                    if (straight_enter_count > 3) {
+                        straight_enter_count -= 3;
+                    } else {
+                        straight_enter_count = 0;
+                    }
                 } else {
-                    straight_enter_count = 0;
-                }
-            } else {
-                uint8_t evidence_step = (error <= -2) ? 3 : 1;
+                    uint8_t evidence_step = (error <= -2) ? 3 : 1;
 
-                if (straight_enter_count + evidence_step >=
-                    TRACK_STRAIGHT_ENTER_COUNT) {
-                    curve_mode = 0;
-                    straight_enter_count = 0;
-                } else {
-                    straight_enter_count += evidence_step;
+                    if (straight_enter_count + evidence_step >=
+                        TRACK_STRAIGHT_ENTER_COUNT) {
+                        curve_mode = 0;
+                        straight_enter_count = 0;
+                    } else {
+                        straight_enter_count += evidence_step;
+                    }
                 }
             }
         }
@@ -407,6 +417,17 @@ static void Track_Run(void)
             Bluetooth_Telemetry_Send(sensor_raw, error, curve_mode);
         }
 
+        if ((Delay_GetTick() - last_oled_update) >=
+            OLED_UPDATE_INTERVAL_MS) {
+            last_oled_update = Delay_GetTick();
+            OLED_UpdateDashboard(MOTOR_GetSpeed(MOTOR_LEFT),
+                                 MOTOR_GetSpeed(MOTOR_RIGHT),
+                                 ENCODER_GetTotal(ENCODER_LEFT),
+                                 ENCODER_GetTotal(ENCODER_RIGHT),
+                                 curve_mode);
+        }
+        OLED_RefreshStep();
+
         Delay_ms(TRACK_CONTROL_PERIOD_MS);
     }
 }
@@ -426,9 +447,12 @@ int main(void)
     MOTOR_Init();
     SERVO_Init();
     TRACK_Init();
+    OLED_Init();
 
     UART_SendString("READY USART1 115200\r\n");
     BLUETOOTH_SendString("READY USART3 115200\r\n");
+    OLED_UpdateDashboard(0, 0, 0, 0, 0);
+    OLED_Refresh();
 
     /* 上电等待 3 秒 */
     Delay_ms(3000);

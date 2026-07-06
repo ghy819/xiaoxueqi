@@ -23,3 +23,4 @@
 .\objects\main.o: uart.h
 .\objects\main.o: encoder.h
 .\objects\main.o: bluetooth.h
+.\objects\main.o: oled.h

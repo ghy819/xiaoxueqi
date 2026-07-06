@@ -7,6 +7,7 @@
 ".\objects\motor.o"
 ".\objects\uart.o"
 ".\objects\bluetooth.o"
+".\objects\oled.o"
 ".\objects\encoder.o"
 ".\objects\misc.o"
 ".\objects\stm32f10x_adc.o"
