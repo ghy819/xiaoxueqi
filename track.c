@@ -7,7 +7,7 @@
   *            PC0     PC1     PC2     PC3     PC13
   *            (左)                     (右)
   *
-  *          权重:       -4      -2       0      +2      +4
+  *          权重:       -2      -1       0      +1      +2
   *
   *          偏差 = Σ(权重[i] × 是否压线[i]) / 压线传感器数量
   */
@@ -18,7 +18,7 @@
  * 传感器权重表 (从左到右)
  * ================================================================ */
 
-static const int8_t TRACK_WEIGHT[5] = { -4, -2, 0, 2, 4 };
+static const int8_t TRACK_WEIGHT[5] = { -2, -1, 0, 1, 2 };
 
 /* ================================================================
  * 初始化 — 5 路 GPIOC 上拉输入
@@ -105,28 +105,39 @@ uint8_t TRACK_FilterSample(uint8_t raw)
 }
 
 /* ================================================================
- * 计算位置偏差 (-4 ~ +4)
+ * 计算位置偏差 (-2 ~ +2)
  *
  *   0  = 居中 (OUT3 压线, 或对称压线)
- *  <0  = 偏右 (左边传感器压线, 需左转修正)
- *  >0  = 偏左 (右边传感器压线, 需右转修正)
+ *  <0  = 黑线在车体左侧，需左转修正
+ *  >0  = 黑线在车体右侧，需右转修正
  * ================================================================ */
 
-int8_t TRACK_GetErrorFromRaw(uint8_t raw)
+int16_t TRACK_GetErrorX10(uint8_t raw)
 {
-    int8_t  error_sum = 0;
-    int8_t  count = 0;
+    int16_t error_sum = 0;
+    uint8_t count = 0;
+    uint8_t i;
 
-    for (uint8_t i = 0; i < 5; i++) {
+    for (i = 0; i < 5; i++) {
         if (raw & (0x01 << i)) {
             error_sum += TRACK_WEIGHT[i];
             count++;
         }
     }
 
-    if (count == 0) return 0;   /* 完全脱线: 保持直行 */
+    if (count == 0) return 0;
 
-    return error_sum / count;
+    return (int16_t)(error_sum * 10 / count);
+}
+
+int8_t TRACK_GetErrorFromRaw(uint8_t raw)
+{
+    int16_t error_x10 = TRACK_GetErrorX10(raw);
+
+    if (error_x10 >= 0) {
+        return (int8_t)((error_x10 + 5) / 10);
+    }
+    return (int8_t)((error_x10 - 5) / 10);
 }
 
 int8_t TRACK_GetError(void)
@@ -148,8 +159,8 @@ uint8_t TRACK_SelectLikelyLine(uint8_t raw, uint8_t previous_raw)
     uint8_t component_count = 0;
     uint8_t best_mask = raw;
     uint8_t ambiguous = 0;
-    int8_t previous_error;
-    int8_t best_distance = 127;
+    int16_t previous_error;
+    int16_t best_distance = 32767;
 
     raw &= 0x1F;
     previous_raw &= 0x1F;
@@ -162,8 +173,8 @@ uint8_t TRACK_SelectLikelyLine(uint8_t raw, uint8_t previous_raw)
 
     while (i < 5) {
         uint8_t component_mask = 0;
-        int8_t component_error;
-        int8_t distance;
+        int16_t component_error;
+        int16_t distance;
 
         while (i < 5 && !(raw & (1U << i))) {
             i++;
@@ -179,7 +190,7 @@ uint8_t TRACK_SelectLikelyLine(uint8_t raw, uint8_t previous_raw)
         }
 
         component_count++;
-        component_error = TRACK_GetErrorFromRaw(component_mask);
+        component_error = TRACK_GetErrorX10(component_mask);
         distance = component_error - previous_error;
         if (distance < 0) {
             distance = -distance;
@@ -208,20 +219,5 @@ uint8_t TRACK_SelectLikelyLine(uint8_t raw, uint8_t previous_raw)
 
 int16_t TRACK_GetCorrection(int8_t error)
 {
-    if (error == 0) return 0;
-
-    int8_t  abs_err = (error > 0) ? error : -error;
-    int16_t correction;
-
-    if (abs_err <= 1) {
-        correction = (int16_t)abs_err * TRACK_KP_SMALL;
-    } else if (abs_err <= 2) {
-        correction = (int16_t)abs_err * TRACK_KP_MEDIUM;
-    } else if (abs_err <= 3) {
-        correction = (int16_t)abs_err * TRACK_KP_LARGE;
-    } else {
-        correction = (int16_t)abs_err * TRACK_KP_EXTREME;
-    }
-
-    return (error > 0) ? correction : -correction;
+    return (int16_t)error * TRACK_PID_KP;
 }

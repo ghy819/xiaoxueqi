@@ -37,49 +37,40 @@
 #define TRACK5_CLK          RCC_APB2Periph_GPIOC
 
 /* ================================================================
- * 修正参数 - 根据实测调整
+ * 控制参数 - 误差均为放大 10 倍后的定点数 (-20 ~ +20)
  * ================================================================ */
 
-#define TRACK_CONTROL_PERIOD_MS 3   /* 控制与传感器采样周期            */
-#define TRACK_BASE_SPEED    100     /* 直线基准速度 (0~100)            */
+#define TRACK_CONTROL_PERIOD_MS       3
 
-/* 分段修正系数: 偏差越大，修正越强 */
-#define TRACK_KP_SMALL      8       /* |error| <= 1: 轻微修正          */
-#define TRACK_KP_MEDIUM     16      /* |error| <= 2: 中等修正          */
-#define TRACK_KP_LARGE      24      /* |error| <= 3: 较大修正          */
-#define TRACK_KP_EXTREME    30      /* |error| <= 4: 极限修正          */
-
-/* PD 控制 */
-#define TRACK_KD            12      /* 微分增益                        */
-#define TRACK_D_LIMIT       12      /* 限制微分冲击                    */
-#define TRACK_INNER_STEER_INITIAL_RATIO 35
-#define TRACK_OUT2_STEER_RATIO 60
-#define TRACK_OUT4_STEER_RATIO 75
-#define TRACK_INNER_SERVO_OLD_WEIGHT 3
-#define TRACK_INNER_SERVO_NEW_WEIGHT 2
-
-/* 顺时针椭圆赛道的直道/弯道识别与直道稳定参数 */
-#define TRACK_STRAIGHT_ENTER_COUNT 20
-#define TRACK_CURVE_MIN_HOLD_COUNT 100 /* 弯道模式至少保持约 300ms      */
-#define TRACK_STRAIGHT_OUTER_CONFIRM_COUNT 3
-#define TRACK_STRAIGHT_INNER_CENTER_COUNT 3
-#define TRACK_STRAIGHT_SMALL_STEER_RATIO 0
-#define TRACK_STRAIGHT_INNER_STEER_RATIO 25
-#define TRACK_STRAIGHT_SERVO_OLD_WEIGHT 5
-#define TRACK_STRAIGHT_SERVO_NEW_WEIGHT 1
+/* PID 与输出平滑 */
+#define TRACK_PID_KP                  12
+#define TRACK_PID_KD                  4
+#define TRACK_PID_KI_DIV              40
+#define TRACK_INTEGRAL_LIMIT          80
+#define TRACK_CORRECTION_LIMIT        35
+#define TRACK_SERVO_FILTER_OLD        2
+#define TRACK_SERVO_FILTER_NEW        3
 
 /* 舵机转向范围 */
-#define TRACK_SERVO_MIN_ANGLE 55
-#define TRACK_SERVO_MAX_ANGLE 130
+#define TRACK_SERVO_CENTER_ANGLE      90
+#define TRACK_SERVO_MIN_ANGLE         55
+#define TRACK_SERVO_MAX_ANGLE         130
 
-/* 速度与差速参数 */
-#define TRACK_CURVE_ENTRY_RATIO 100
-#define TRACK_CURVE_SHARP_RATIO 95
-#define TRACK_SPEED_RECOVERY_STEP 3
-#define TRACK_DIFF_RATIO    80
-#define TRACK_EDGE_INNER_SPEED 90
-#define TRACK_EDGE_OUTER_SPEED 100
-#define TRACK_LOST_CONFIRM_COUNT 5
+/* 分级速度与差速 */
+#define TRACK_STRAIGHT_SPEED          95
+#define TRACK_CURVE_SPEED             72
+#define TRACK_SHARP_SPEED             45
+#define TRACK_SEARCH_SPEED            40
+#define TRACK_DIFF_RATIO              65
+#define TRACK_SPEED_RECOVERY_STEP     2
+#define TRACK_STRAIGHT_ERROR_X10      5
+
+/* 状态确认/保持时间，避免传感器抖动造成频繁切换 */
+#define TRACK_SHARP_CONFIRM_COUNT     3
+#define TRACK_SHARP_MIN_HOLD_COUNT    20
+#define TRACK_SHARP_EXIT_COUNT        5
+#define TRACK_LOST_CONFIRM_COUNT      5
+#define TRACK_REACQUIRE_COUNT         3
 #define TRACK_FULL_BLACK_CONFIRM_COUNT 13
 
 /* ================================================================
@@ -91,6 +82,7 @@ uint8_t TRACK_Read(void);
 uint8_t TRACK_FilterSample(uint8_t raw);
 int8_t  TRACK_GetError(void);
 int8_t  TRACK_GetErrorFromRaw(uint8_t raw);
+int16_t TRACK_GetErrorX10(uint8_t raw);
 uint8_t TRACK_SelectLikelyLine(uint8_t raw, uint8_t previous_raw);
 int16_t TRACK_GetCorrection(int8_t error);
 
